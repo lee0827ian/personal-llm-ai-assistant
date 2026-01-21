@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import { FileText, Trash2, Upload, Loader2, Zap } from 'lucide-react'
+import { FileText, Trash2, Upload, Loader2, Zap, Search } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 import { Progress } from '../components/ui/progress'
+import { Input } from '../components/ui/input'
 import { toast } from 'react-hot-toast'
 import {
   deleteVectorDocument,
   getVectorDocuments,
   initVectorDB,
   saveVectorDocument,
+  vectorSearch,
   type VectorDocument,
 } from '../lib/vectorStorage'
 import { extractText } from '../lib/localRag'
@@ -19,10 +21,21 @@ export default function LibraryPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [currentFile, setCurrentFile] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<
+    Array<{ text: string; source: string; score: number }>
+  >([])
+  const [isSearching, setIsSearching] = useState(false)
 
   useEffect(() => {
     loadDocuments()
   }, [])
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([])
+    }
+  }, [searchQuery])
 
   async function loadDocuments() {
     await initVectorDB()
@@ -76,6 +89,20 @@ export default function LibraryPage() {
     }
   }
 
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || isSearching) return
+    setIsSearching(true)
+    try {
+      const results = await vectorSearch(searchQuery.trim(), 5)
+      setSearchResults(results)
+    } catch (error) {
+      console.error('Search failed:', error)
+      toast.error('Search failed')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-hidden">
       <header className="h-16 border-b flex items-center justify-between px-6 bg-card/50 backdrop-blur-md sticky top-0 z-10">
@@ -125,14 +152,57 @@ export default function LibraryPage() {
 
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <h3 className="text-2xl font-bold tracking-tight text-foreground">Local Documents</h3>
               <p className="text-muted-foreground mt-1">
                 {documents.length} documents · {documents.reduce((sum, doc) => sum + doc.chunkCount, 0)} chunks
               </p>
             </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                placeholder="Search your documents..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    handleSearch()
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()}>
+                {isSearching ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Search className="h-4 w-4 mr-2" />
+                )}
+                Search
+              </Button>
+            </div>
           </div>
+
+          {searchResults.length > 0 && (
+            <Card className="p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Search Results
+              </h4>
+              <div className="space-y-3">
+                {searchResults.map((result, index) => (
+                  <div
+                    key={`${result.source}-${index}`}
+                    className="rounded-lg border p-3 bg-background/50"
+                  >
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-medium">{result.source}</span>
+                      <span>{Math.round(result.score * 100)}%</span>
+                    </div>
+                    <p className="text-sm text-foreground mt-2 whitespace-pre-wrap">{result.text}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {documents.map((doc) => (

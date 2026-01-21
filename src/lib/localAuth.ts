@@ -26,6 +26,13 @@ export async function verifyPassword(input: string): Promise<boolean> {
   return hash === stored
 }
 
+export async function setLocalPassword(nextPassword: string): Promise<void> {
+  if (typeof window === 'undefined') return
+  const { hashString } = await import('./security')
+  const hash = await hashString(nextPassword)
+  window.localStorage.setItem(LOCAL_PASSWORD_KEY, hash)
+}
+
 export function getLocalUser(): LocalUser | null {
   if (typeof window === 'undefined') return null
   const stored = window.localStorage.getItem(LOCAL_USER_KEY)
