@@ -5,6 +5,26 @@ export interface LocalUser {
 }
 
 export const LOCAL_USER_KEY = 'local_user'
+export const LOCAL_PASSWORD_KEY = 'local_password_hash'
+const DEFAULT_PASSWORD = '1234'
+
+export async function ensureDefaultPassword(): Promise<void> {
+  if (typeof window === 'undefined') return
+  const stored = window.localStorage.getItem(LOCAL_PASSWORD_KEY)
+  if (stored) return
+  const { hashString } = await import('./security')
+  const hash = await hashString(DEFAULT_PASSWORD)
+  window.localStorage.setItem(LOCAL_PASSWORD_KEY, hash)
+}
+
+export async function verifyPassword(input: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  const stored = window.localStorage.getItem(LOCAL_PASSWORD_KEY)
+  if (!stored) return false
+  const { hashString } = await import('./security')
+  const hash = await hashString(input)
+  return hash === stored
+}
 
 export function getLocalUser(): LocalUser | null {
   if (typeof window === 'undefined') return null

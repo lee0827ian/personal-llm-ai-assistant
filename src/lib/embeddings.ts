@@ -1,27 +1,43 @@
-import { pipeline, type Pipeline } from '@xenova/transformers'
+const VECTOR_SIZE = 256
 
-let embedder: Pipeline | null = null
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+}
 
-export async function initEmbedder(): Promise<Pipeline> {
-  if (embedder) return embedder
+function fnv1aHash(value: string, seed = 0x811c9dc5): number {
+  let hash = seed
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
 
-  embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-    quantized: true,
-  })
-
-  return embedder
+function normalize(vector: number[]): number[] {
+  let sumSquares = 0
+  for (const value of vector) {
+    sumSquares += value * value
+  }
+  const magnitude = Math.sqrt(sumSquares)
+  if (!magnitude) return vector
+  return vector.map((value) => value / magnitude)
 }
 
 export async function embed(text: string): Promise<number[]> {
-  const model = await initEmbedder()
-  const truncated = text.slice(0, 2000)
+  const tokens = tokenize(text.slice(0, 4000))
+  const vector = new Array<number>(VECTOR_SIZE).fill(0)
 
-  const output = await model(truncated, {
-    pooling: 'mean',
-    normalize: true,
-  })
+  for (const token of tokens) {
+    const hash = fnv1aHash(token)
+    const index = hash % VECTOR_SIZE
+    const sign = hash & 1 ? 1 : -1
+    vector[index] += sign
+  }
 
-  return Array.from(output.data)
+  return normalize(vector)
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

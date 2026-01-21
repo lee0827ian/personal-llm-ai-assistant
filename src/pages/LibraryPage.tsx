@@ -92,7 +92,7 @@ export default function LibraryPage() {
             id="file-upload"
             className="hidden"
             onChange={handleFileUpload}
-            accept=".pdf,.txt"
+            accept=".txt,.md,.markdown"
             disabled={isUploading}
           />
           <label htmlFor="file-upload">
@@ -168,7 +168,7 @@ export default function LibraryPage() {
                 <div>
                   <h4 className="font-medium text-foreground">No documents yet</h4>
                   <p className="text-sm text-muted-foreground max-w-xs mx-auto mt-1">
-                    Upload your first PDF or text file to start using personal vector RAG.
+                    Upload your first text or Markdown file to start using personal vector RAG.
                   </p>
                 </div>
               </div>
