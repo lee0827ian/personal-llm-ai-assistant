@@ -1,16 +1,28 @@
-import { useState, useEffect } from 'react'
-import { Plus, Search, FileText, Trash2, Upload, Loader2, FolderPlus } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { FileText, Trash2, Upload, Loader2, FolderPlus } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Card } from '../components/ui/card'
-import { blink } from '../lib/blink'
 import { toast } from 'react-hot-toast'
 import { cn } from '../lib/utils'
+import {
+  createCollection,
+  deleteCollection,
+  deleteDocument,
+  getCollections,
+  getDocuments,
+  saveVectorDocument,
+  type Collection,
+  type DocumentRecord,
+} from '../lib/vectorStorage'
+import { extractText } from '../lib/localRag'
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 export default function LibraryPage() {
-  const [collections, setCollections] = useState<any[]>([])
-  const [selectedCollection, setSelectedCollection] = useState<any>(null)
-  const [documents, setDocuments] = useState<any[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null)
+  const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [newCollectionName, setNewCollectionName] = useState('')
@@ -29,7 +41,7 @@ export default function LibraryPage() {
 
   async function loadCollections() {
     try {
-      const cols = await blink.rag.listCollections()
+      const cols = await getCollections()
       setCollections(cols)
       if (cols.length > 0 && !selectedCollection) {
         setSelectedCollection(cols[0])
@@ -41,7 +53,7 @@ export default function LibraryPage() {
 
   async function loadDocuments(collectionId: string) {
     try {
-      const docs = await blink.rag.listDocuments({ collectionId })
+      const docs = await getDocuments(collectionId)
       setDocuments(docs)
     } catch (error) {
       toast.error('Failed to load documents')
@@ -52,8 +64,8 @@ export default function LibraryPage() {
     if (!newCollectionName.trim() || isCreating) return
     setIsCreating(true)
     try {
-      const col = await blink.rag.createCollection({ name: newCollectionName })
-      setCollections(prev => [...prev, col])
+      const col = await createCollection(newCollectionName.trim())
+      setCollections((prev) => [...prev, col])
       setNewCollectionName('')
       setSelectedCollection(col)
       toast.success('Collection created')
@@ -64,51 +76,43 @@ export default function LibraryPage() {
     }
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file || !selectedCollection || isUploading) return
 
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error('File size must be less than 10MB')
+      event.target.value = ''
+      return
+    }
+
     setIsUploading(true)
-    const toastId = toast.loading('Uploading document...')
+    const toastId = toast.loading('Processing document...')
 
     try {
-      const reader = new FileReader()
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string
-        const data = base64.split(',')[1]
+      const content = await extractText(file)
 
-        try {
-          const doc = await blink.rag.upload({
-            collectionName: selectedCollection.name,
-            filename: file.name,
-            file: {
-              data,
-              contentType: file.type
-            }
-          })
+      await saveVectorDocument({
+        collectionId: selectedCollection.id,
+        filename: file.name,
+        content,
+      })
 
-          toast.loading('Processing document...', { id: toastId })
-          await blink.rag.waitForReady(doc.id)
-          
-          await loadDocuments(selectedCollection.id)
-          toast.success('Document ready', { id: toastId })
-        } catch (error) {
-          toast.error('Upload failed', { id: toastId })
-        } finally {
-          setIsUploading(false)
-        }
-      }
-      reader.readAsDataURL(file)
+      await loadDocuments(selectedCollection.id)
+      toast.success('Document ready', { id: toastId })
+      event.target.value = ''
     } catch (error) {
-      toast.error('Failed to read file', { id: toastId })
+      console.error('Upload failed:', error)
+      toast.error('Upload failed', { id: toastId })
+    } finally {
       setIsUploading(false)
     }
   }
 
   const handleDeleteDocument = async (docId: string) => {
     try {
-      await blink.rag.deleteDocument(docId)
-      setDocuments(prev => prev.filter(d => d.id !== docId))
+      await deleteDocument(docId)
+      setDocuments((prev) => prev.filter((doc) => doc.id !== docId))
       toast.success('Document deleted')
     } catch (error) {
       toast.error('Delete failed')
@@ -118,10 +122,11 @@ export default function LibraryPage() {
   const handleDeleteCollection = async (id: string) => {
     if (!confirm('Delete this collection and all its documents?')) return
     try {
-      await blink.rag.deleteCollection(id)
-      setCollections(prev => prev.filter(c => c.id !== id))
+      await deleteCollection(id)
+      const updated = collections.filter((collection) => collection.id !== id)
+      setCollections(updated)
       if (selectedCollection?.id === id) {
-        setSelectedCollection(collections[0] || null)
+        setSelectedCollection(updated[0] ?? null)
       }
       toast.success('Collection deleted')
     } catch (error) {
@@ -136,29 +141,28 @@ export default function LibraryPage() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Collections List */}
         <div className="w-64 border-r p-4 space-y-4 overflow-y-auto">
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">
               Collections
             </h3>
             <div className="space-y-1">
-              {collections.map(col => (
+              {collections.map((collection) => (
                 <div
-                  key={col.id}
+                  key={collection.id}
                   className={cn(
                     'group flex items-center justify-between px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors',
-                    selectedCollection?.id === col.id
+                    selectedCollection?.id === collection.id
                       ? 'bg-secondary text-foreground font-medium'
                       : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
                   )}
-                  onClick={() => setSelectedCollection(col)}
+                  onClick={() => setSelectedCollection(collection)}
                 >
-                  <span className="truncate">{col.name}</span>
+                  <span className="truncate">{collection.name}</span>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteCollection(col.id)
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleDeleteCollection(collection.id)
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:text-destructive transition-opacity"
                   >
@@ -173,9 +177,9 @@ export default function LibraryPage() {
             <Input
               placeholder="New collection..."
               value={newCollectionName}
-              onChange={(e) => setNewCollectionName(e.target.value)}
+              onChange={(event) => setNewCollectionName(event.target.value)}
               className="h-8 text-xs"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateCollection()}
+              onKeyDown={(event) => event.key === 'Enter' && handleCreateCollection()}
             />
             <Button
               variant="outline"
@@ -184,19 +188,24 @@ export default function LibraryPage() {
               disabled={isCreating || !newCollectionName.trim()}
               onClick={handleCreateCollection}
             >
-              {isCreating ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <FolderPlus className="h-3 w-3 mr-2" />}
+              {isCreating ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-2" />
+              ) : (
+                <FolderPlus className="h-3 w-3 mr-2" />
+              )}
               Create Collection
             </Button>
           </div>
         </div>
 
-        {/* Documents Grid */}
         <div className="flex-1 p-8 overflow-y-auto">
           {selectedCollection ? (
             <div className="max-w-4xl mx-auto space-y-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-bold tracking-tight text-foreground">{selectedCollection.name}</h3>
+                  <h3 className="text-2xl font-bold tracking-tight text-foreground">
+                    {selectedCollection.name}
+                  </h3>
                   <p className="text-muted-foreground mt-1">
                     {documents.length} documents in this collection
                   </p>
@@ -207,7 +216,7 @@ export default function LibraryPage() {
                     id="file-upload"
                     className="hidden"
                     onChange={handleFileUpload}
-                    accept=".pdf,.txt,.html,.md"
+                    accept=".txt,.md"
                     disabled={isUploading}
                   />
                   <label htmlFor="file-upload">
@@ -218,7 +227,11 @@ export default function LibraryPage() {
                       disabled={isUploading}
                     >
                       <span>
-                        {isUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+                        {isUploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Upload className="h-4 w-4 mr-2" />
+                        )}
                         Upload Document
                       </span>
                     </Button>
@@ -227,15 +240,18 @@ export default function LibraryPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {documents.map(doc => (
-                  <Card key={doc.id} className="p-4 flex items-center gap-4 group hover:border-foreground/20 transition-colors">
+                {documents.map((doc) => (
+                  <Card
+                    key={doc.id}
+                    className="p-4 flex items-center gap-4 group hover:border-foreground/20 transition-colors"
+                  >
                     <div className="p-3 bg-secondary rounded-xl">
                       <FileText className="h-6 w-6 text-foreground/70" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate text-foreground">{doc.filename}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {doc.status === 'ready' ? 'Ready for search' : 'Processing...'}
+                        {doc.chunkCount} chunks · {new Date(doc.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <button
@@ -254,7 +270,7 @@ export default function LibraryPage() {
                     <div>
                       <h4 className="font-medium text-foreground">No documents yet</h4>
                       <p className="text-sm text-muted-foreground max-w-xs mx-auto mt-1">
-                        Upload your first PDF or text file to start using personal RAG.
+                        Upload your first text or markdown file to start using personal RAG.
                       </p>
                     </div>
                   </div>

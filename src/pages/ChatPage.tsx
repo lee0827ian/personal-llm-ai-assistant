@@ -1,29 +1,42 @@
-import { useState, useEffect, useRef } from 'react'
-import { Send, Plus, Search, FileText, Trash2, Database } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Database, Send, Trash2 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { ScrollArea } from '../components/ui/scroll-area'
-import { Card } from '../components/ui/card'
-import { blink } from '../lib/blink'
-import { ragSearch } from '@blinkdotnew/sdk'
 import { toast } from 'react-hot-toast'
 import { cn } from '../lib/utils'
+import { getCollections, type Collection, vectorRag } from '../lib/vectorStorage'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  sources?: any[]
+  sources?: Array<{ name: string; score: number }>
 }
+
+const API_KEY_STORAGE = 'local_ai_api_key'
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [collections, setCollections] = useState<any[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
   const [selectedCollection, setSelectedCollection] = useState<string>('')
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE) ?? '')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const loadCollections = async () => {
+      try {
+        const cols = await getCollections()
+        setCollections(cols)
+        if (cols.length > 0) {
+          setSelectedCollection((prev) => prev || cols[0].id)
+        }
+      } catch (error) {
+        console.error('Failed to load collections:', error)
+      }
+    }
+
     loadCollections()
   }, [])
 
@@ -33,77 +46,55 @@ export default function ChatPage() {
     }
   }, [messages])
 
-  async function loadCollections() {
-    try {
-      const cols = await blink.rag.listCollections()
-      setCollections(cols)
-      if (cols.length > 0) {
-        setSelectedCollection(cols[0].name)
-      }
-    } catch (error) {
-      console.error('Failed to load collections:', error)
+  useEffect(() => {
+    const syncKey = () => {
+      setApiKey(localStorage.getItem(API_KEY_STORAGE) ?? '')
     }
-  }
+
+    window.addEventListener('storage', syncKey)
+    window.addEventListener('local-api-key-updated', syncKey)
+
+    return () => {
+      window.removeEventListener('storage', syncKey)
+      window.removeEventListener('local-api-key-updated', syncKey)
+    }
+  }, [])
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
 
+    const currentApiKey = localStorage.getItem(API_KEY_STORAGE) ?? ''
+    if (!currentApiKey) {
+      toast.error('Set your API key in Settings before chatting')
+      return
+    }
+
     const userMessage: Message = { role: 'user', content: input }
-    setMessages(prev => [...prev, userMessage])
+    setMessages((prev) => [...prev, userMessage, { role: 'assistant', content: '' }])
     setInput('')
     setIsLoading(true)
 
     try {
-      if (!selectedCollection) {
-        const { text } = await blink.ai.generateText({ prompt: input })
-        setMessages(prev => [...prev, { role: 'assistant', content: text }])
-      } else {
-        // Use streaming RAG
-        let fullResponse = ''
-        setMessages(prev => [...prev, { role: 'assistant', content: '' }])
-        
-        const stream = await blink.rag.aiSearch({
-          collectionName: selectedCollection,
-          query: input,
-          stream: true,
-        })
+      const { answer, sources } = await vectorRag({
+        query: userMessage.content,
+        apiKey: currentApiKey,
+        collectionId: selectedCollection || undefined,
+      })
 
-        const reader = stream.getReader()
-        const decoder = new TextDecoder()
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
-          
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const json = JSON.parse(line.slice(6))
-              if (json.type === 'text-delta') {
-                fullResponse += json.delta
-                setMessages(prev => {
-                  const last = prev[prev.length - 1]
-                  return [...prev.slice(0, -1), { ...last, content: fullResponse }]
-                })
-              }
-              if (json.type === 'sources') {
-                setMessages(prev => {
-                  const last = prev[prev.length - 1]
-                  return [...prev.slice(0, -1), { ...last, sources: json.sources }]
-                })
-              }
-            } catch (e) {
-              console.error('Error parsing stream chunk:', e)
-            }
-          }
-        }
-      }
+      setMessages((prev) => {
+        if (prev.length === 0) return prev
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        if (next[lastIndex].role !== 'assistant') return prev
+        next[lastIndex] = { role: 'assistant', content: answer, sources }
+        return next
+      })
     } catch (error) {
       console.error('Chat failed:', error)
       toast.error('Failed to get a response')
+      setMessages((prev) =>
+        prev.filter((message) => !(message.role === 'assistant' && message.content === ''))
+      )
     } finally {
       setIsLoading(false)
     }
@@ -116,19 +107,20 @@ export default function ChatPage() {
           <h2 className="font-semibold text-lg">AI Assistant</h2>
           <div className="flex items-center gap-2 bg-secondary px-3 py-1.5 rounded-full text-xs font-medium">
             <Database className="h-3 w-3" />
-            <select 
+            <select
               className="bg-transparent border-none focus:ring-0 p-0"
               value={selectedCollection}
-              onChange={(e) => setSelectedCollection(e.target.value)}
+              onChange={(event) => setSelectedCollection(event.target.value)}
             >
-              <option value="">No Collection (General AI)</option>
-              {collections.map(col => (
-                <option key={col.id} value={col.name}>{col.name}</option>
+              {collections.map((collection) => (
+                <option key={collection.id} value={collection.id}>
+                  {collection.name}
+                </option>
               ))}
             </select>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setMessages([])}>
+        <Button variant="outline" size="sm" onClick={() => setMessages([])} disabled={isLoading}>
           <Trash2 className="h-4 w-4 mr-2" />
           Clear Chat
         </Button>
@@ -143,39 +135,41 @@ export default function ChatPage() {
               </div>
               <h3 className="text-xl font-medium">How can I help you today?</h3>
               <p className="text-muted-foreground max-w-sm">
-                Ask anything about your documents or general knowledge. 
-                I'm powered by advanced context retrieval.
+                Ask anything about your documents. Semantic search keeps answers grounded in your files.
               </p>
             </div>
           )}
-          {messages.map((msg, i) => (
+          {messages.map((message, index) => (
             <div
-              key={i}
+              key={index}
               className={cn(
                 'flex gap-4 animate-in fade-in slide-in-from-bottom-2',
-                msg.role === 'assistant' ? 'flex-row' : 'flex-row-reverse'
+                message.role === 'assistant' ? 'flex-row' : 'flex-row-reverse'
               )}
             >
               <div
                 className={cn(
                   'p-4 rounded-2xl max-w-[80%] text-sm leading-relaxed space-y-3',
-                  msg.role === 'assistant'
+                  message.role === 'assistant'
                     ? 'bg-secondary text-foreground'
                     : 'bg-primary text-primary-foreground shadow-sm'
                 )}
               >
-                <div className="whitespace-pre-wrap">{msg.content}</div>
-                {msg.role === 'assistant' && msg.content === '' && isLoading && (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                {message.role === 'assistant' && message.content === '' && isLoading && (
                   <span className="inline-block h-4 w-1 bg-foreground animate-pulse ml-1" />
                 )}
-                
-                {msg.sources && msg.sources.length > 0 && (
+
+                {message.sources && message.sources.length > 0 && (
                   <div className="pt-3 border-t border-foreground/10 space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider opacity-50">Sources</p>
                     <div className="flex flex-wrap gap-2">
-                      {msg.sources.map((source: any, idx: number) => (
-                        <div key={idx} className="bg-background/50 px-2 py-1 rounded text-[10px] border border-foreground/10 truncate max-w-[150px]">
-                          {source.filename}
+                      {message.sources.map((source, sourceIndex) => (
+                        <div
+                          key={`${source.name}-${sourceIndex}`}
+                          className="bg-background/50 px-2 py-1 rounded text-[10px] border border-foreground/10 truncate max-w-[180px]"
+                        >
+                          {source.name} ({source.score}%)
                         </div>
                       ))}
                     </div>
@@ -190,16 +184,22 @@ export default function ChatPage() {
       <div className="p-6 border-t bg-card/50 backdrop-blur-md">
         <div className="max-w-3xl mx-auto relative">
           <Input
-            placeholder="Type your message..."
+            placeholder={apiKey ? 'Type your message...' : 'Add your API key in Settings to chat'}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                handleSend()
+              }
+            }}
+            disabled={isLoading}
             className="pr-12 h-12 rounded-xl shadow-sm focus-visible:ring-1"
           />
           <Button
             size="icon"
             onClick={handleSend}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || !input.trim() || !apiKey}
             className="absolute right-1 top-1 h-10 w-10 rounded-lg"
           >
             <Send className="h-4 w-4" />

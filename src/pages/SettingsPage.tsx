@@ -1,9 +1,46 @@
-import { useBlinkAuth } from '@blinkdotnew/react'
+import { useEffect, useState } from 'react'
 import { Card } from '../components/ui/card'
-import { User, Shield, Info, Database, Brain } from 'lucide-react'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import { User, Shield, Info, Database, Brain, Key } from 'lucide-react'
+import { useLocalUser } from '../hooks/useLocalUser'
+
+const API_KEY_STORAGE = 'local_ai_api_key'
 
 export default function SettingsPage() {
-  const { user } = useBlinkAuth()
+  const { user, setUser, logout } = useLocalUser()
+  const [displayName, setDisplayName] = useState(user?.name ?? '')
+  const [email, setEmail] = useState(user?.email ?? '')
+  const [apiKey, setApiKey] = useState('')
+
+  useEffect(() => {
+    const stored = localStorage.getItem(API_KEY_STORAGE)
+    if (stored) setApiKey(stored)
+  }, [])
+
+  useEffect(() => {
+    setDisplayName(user?.name ?? '')
+    setEmail(user?.email ?? '')
+  }, [user])
+
+  const handleSaveProfile = () => {
+    if (!displayName.trim()) return
+    setUser({
+      name: displayName.trim(),
+      email: email.trim() || undefined,
+      createdAt: user?.createdAt ?? new Date().toISOString(),
+    })
+  }
+
+  const handleSaveApiKey = () => {
+    if (!apiKey.trim()) {
+      localStorage.removeItem(API_KEY_STORAGE)
+      window.dispatchEvent(new Event('local-api-key-updated'))
+      return
+    }
+    localStorage.setItem(API_KEY_STORAGE, apiKey.trim())
+    window.dispatchEvent(new Event('local-api-key-updated'))
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-hidden">
@@ -15,35 +52,78 @@ export default function SettingsPage() {
         <div className="max-w-2xl mx-auto space-y-8">
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Profile</h3>
-            <Card className="p-6">
+            <Card className="p-6 space-y-5">
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-full bg-secondary flex items-center justify-center border">
                   <User className="h-8 w-8 text-muted-foreground" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold text-foreground">{user?.email?.split('@')[0]}</h4>
-                  <p className="text-muted-foreground">{user?.email}</p>
+                  <h4 className="text-xl font-bold text-foreground">{user?.name ?? 'Local User'}</h4>
+                  <p className="text-muted-foreground">{user?.email ?? 'No email set'}</p>
                 </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Display name</label>
+                  <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={handleSaveProfile} disabled={!displayName.trim()}>
+                  Save profile
+                </Button>
+                <Button variant="outline" onClick={logout}>
+                  Sign out
+                </Button>
               </div>
             </Card>
           </div>
 
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">AI Configuration</h3>
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center gap-3 text-foreground">
+                <Key className="h-4 w-4" />
+                <span className="font-medium">Claude API Key</span>
+              </div>
+              <Input
+                type="password"
+                placeholder="sk-ant-..."
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Stored locally in your browser. Required for generating answers.
+              </p>
+              <Button onClick={handleSaveApiKey}>Save API key</Button>
+            </Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card className="p-4 space-y-3">
                 <div className="flex items-center gap-2 text-foreground">
                   <Brain className="h-4 w-4" />
                   <span className="font-medium">Model</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Using Gemini 3 Flash for fast and efficient RAG processing.</p>
+                <p className="text-sm text-muted-foreground">
+                  Uses your Claude API key for response generation with local context.
+                </p>
               </Card>
               <Card className="p-4 space-y-3">
                 <div className="flex items-center gap-2 text-foreground">
                   <Database className="h-4 w-4" />
                   <span className="font-medium">Vector Storage</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Built-in high-performance semantic retrieval system.</p>
+                <p className="text-sm text-muted-foreground">
+                  Local embeddings stored in IndexedDB for semantic search across documents.
+                </p>
               </Card>
             </div>
           </div>
@@ -58,7 +138,8 @@ export default function SettingsPage() {
                 <div>
                   <h4 className="font-medium text-foreground">Privacy Policy</h4>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Your documents are processed and stored securely. We do not use your personal data to train public models.
+                    Documents and embeddings stay in your browser storage. Nothing is uploaded unless you call
+                    external APIs directly.
                   </p>
                 </div>
               </div>
@@ -68,7 +149,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h4 className="font-medium text-foreground">Version</h4>
-                  <p className="text-sm text-muted-foreground mt-1">1.0.0 Stable</p>
+                  <p className="text-sm text-muted-foreground mt-1">1.1.0 Local</p>
                 </div>
               </div>
             </Card>
