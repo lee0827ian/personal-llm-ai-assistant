@@ -1,9 +1,54 @@
+import { useState } from 'react'
 import { Card } from '../components/ui/card'
-import { User, Shield, Info, Database, Brain, KeyRound } from 'lucide-react'
+import { Input } from '../components/ui/input'
+import { Button } from '../components/ui/button'
+import { User, Shield, Info, Database, Brain, KeyRound, Lock } from 'lucide-react'
 import { useLocalUser } from '../hooks/useLocalUser'
+import { setLocalPassword, verifyPassword } from '../lib/localAuth'
 
 export default function SettingsPage() {
   const { user } = useLocalUser()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [nextPassword, setNextPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
+
+  const handlePasswordUpdate = async () => {
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    if (!currentPassword || !nextPassword || !confirmPassword) {
+      setPasswordError('모든 비밀번호 필드를 입력해주세요.')
+      return
+    }
+
+    if (nextPassword.length < 4) {
+      setPasswordError('새 비밀번호는 최소 4자리 이상이어야 합니다.')
+      return
+    }
+
+    if (nextPassword !== confirmPassword) {
+      setPasswordError('새 비밀번호가 일치하지 않습니다.')
+      return
+    }
+
+    setIsSavingPassword(true)
+    const isValid = await verifyPassword(currentPassword)
+    if (!isValid) {
+      setPasswordError('현재 비밀번호가 올바르지 않습니다.')
+      setIsSavingPassword(false)
+      return
+    }
+
+    await setLocalPassword(nextPassword)
+    setCurrentPassword('')
+    setNextPassword('')
+    setConfirmPassword('')
+    setIsSavingPassword(false)
+    setPasswordSuccess('비밀번호가 변경되었습니다.')
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-hidden">
@@ -61,6 +106,47 @@ export default function SettingsPage() {
                 </p>
               </Card>
             </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">Security</h3>
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center gap-2 text-foreground">
+                <Lock className="h-4 w-4" />
+                <span className="font-medium">Change Password</span>
+              </div>
+              <div className="grid gap-3">
+                <Input
+                  type="password"
+                  placeholder="현재 비밀번호"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+                <Input
+                  type="password"
+                  placeholder="새 비밀번호"
+                  value={nextPassword}
+                  onChange={(event) => setNextPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+                <Input
+                  type="password"
+                  placeholder="새 비밀번호 확인"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
+              {passwordSuccess && <p className="text-xs text-emerald-600">{passwordSuccess}</p>}
+              <Button onClick={handlePasswordUpdate} disabled={isSavingPassword}>
+                {isSavingPassword ? 'Saving...' : 'Update Password'}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                기본 비밀번호는 1234이며, 변경 후 로컬 브라우저에 해시로 저장됩니다.
+              </p>
+            </Card>
           </div>
 
           <div className="space-y-4">

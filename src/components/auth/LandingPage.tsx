@@ -5,10 +5,22 @@ import { Brain, Shield, Zap, Sparkles } from 'lucide-react'
 interface LandingPageProps {
   displayName: string
   onDisplayNameChange: (value: string) => void
+  password: string
+  onPasswordChange: (value: string) => void
+  isSubmitting: boolean
+  error: string
   onLogin: () => void
 }
 
-export function LandingPage({ displayName, onDisplayNameChange, onLogin }: LandingPageProps) {
+export function LandingPage({
+  displayName,
+  onDisplayNameChange,
+  password,
+  onPasswordChange,
+  isSubmitting,
+  error,
+  onLogin,
+}: LandingPageProps) {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full text-center space-y-12">
@@ -53,8 +65,27 @@ export function LandingPage({ displayName, onDisplayNameChange, onLogin }: Landi
               onChange={(event) => onDisplayNameChange(event.target.value)}
             />
           </div>
-          <Button size="lg" onClick={onLogin} className="w-full text-lg h-12 rounded-full font-medium">
-            Continue
+          <div className="space-y-2 text-left">
+            <label className="text-sm font-medium text-muted-foreground">Password</label>
+            <Input
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              autoComplete="current-password"
+            />
+            <p className="text-xs text-muted-foreground">
+              기본 비밀번호는 1234이며, 로컬 브라우저에만 저장됩니다.
+            </p>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+          <Button
+            size="lg"
+            onClick={onLogin}
+            className="w-full text-lg h-12 rounded-full font-medium"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Checking...' : 'Continue'}
           </Button>
         </div>
       </div>
