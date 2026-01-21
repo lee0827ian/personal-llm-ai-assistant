@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import { AuthGate } from './components/auth/AuthGate'
+import { LocalAuthGate } from './components/auth/LocalAuthGate'
 import { DashboardLayout } from './components/layout/DashboardLayout'
 import ChatPage from './pages/ChatPage'
 import LibraryPage from './pages/LibraryPage'
@@ -8,7 +8,7 @@ import SettingsPage from './pages/SettingsPage'
 function App() {
   return (
     <Router>
-      <AuthGate>
+      <LocalAuthGate>
         <DashboardLayout>
           <Routes>
             <Route path="/" element={<ChatPage />} />
@@ -16,7 +16,7 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </DashboardLayout>
-      </AuthGate>
+      </LocalAuthGate>
     </Router>
   )
 }

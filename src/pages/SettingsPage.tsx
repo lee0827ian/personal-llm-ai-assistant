@@ -1,9 +1,9 @@
-import { useBlinkAuth } from '@blinkdotnew/react'
 import { Card } from '../components/ui/card'
-import { User, Shield, Info, Database, Brain } from 'lucide-react'
+import { User, Shield, Info, Database, Brain, KeyRound } from 'lucide-react'
+import { useLocalUser } from '../hooks/useLocalUser'
 
 export default function SettingsPage() {
-  const { user } = useBlinkAuth()
+  const { user } = useLocalUser()
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-hidden">
@@ -21,8 +21,10 @@ export default function SettingsPage() {
                   <User className="h-8 w-8 text-muted-foreground" />
                 </div>
                 <div>
-                  <h4 className="text-xl font-bold text-foreground">{user?.email?.split('@')[0]}</h4>
-                  <p className="text-muted-foreground">{user?.email}</p>
+                  <h4 className="text-xl font-bold text-foreground">{user?.name ?? 'Local User'}</h4>
+                  <p className="text-muted-foreground text-sm">
+                    Local profile · {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -36,14 +38,27 @@ export default function SettingsPage() {
                   <Brain className="h-4 w-4" />
                   <span className="font-medium">Model</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Using Gemini 3 Flash for fast and efficient RAG processing.</p>
+                <p className="text-sm text-muted-foreground">
+                  Claude 3.5 Sonnet for fast, high-quality local RAG responses.
+                </p>
               </Card>
               <Card className="p-4 space-y-3">
                 <div className="flex items-center gap-2 text-foreground">
                   <Database className="h-4 w-4" />
                   <span className="font-medium">Vector Storage</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Built-in high-performance semantic retrieval system.</p>
+                <p className="text-sm text-muted-foreground">
+                  IndexedDB-backed vector embeddings stored locally in your browser.
+                </p>
+              </Card>
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center gap-2 text-foreground">
+                  <KeyRound className="h-4 w-4" />
+                  <span className="font-medium">API Key</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Stored locally in your browser to generate answers with Claude.
+                </p>
               </Card>
             </div>
           </div>
@@ -58,7 +73,7 @@ export default function SettingsPage() {
                 <div>
                   <h4 className="font-medium text-foreground">Privacy Policy</h4>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Your documents are processed and stored securely. We do not use your personal data to train public models.
+                    Your documents are processed and stored locally. We do not use your data to train public models.
                   </p>
                 </div>
               </div>
@@ -68,7 +83,7 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <h4 className="font-medium text-foreground">Version</h4>
-                  <p className="text-sm text-muted-foreground mt-1">1.0.0 Stable</p>
+                  <p className="text-sm text-muted-foreground mt-1">1.1.0 Local Vector Edition</p>
                 </div>
               </div>
             </Card>

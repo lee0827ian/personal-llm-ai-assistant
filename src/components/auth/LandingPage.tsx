@@ -1,11 +1,14 @@
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { Brain, Shield, Zap, Sparkles } from 'lucide-react'
 
 interface LandingPageProps {
+  displayName: string
+  onDisplayNameChange: (value: string) => void
   onLogin: () => void
 }
 
-export function LandingPage({ onLogin }: LandingPageProps) {
+export function LandingPage({ displayName, onDisplayNameChange, onLogin }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <div className="max-w-4xl w-full text-center space-y-12">
@@ -41,9 +44,17 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           />
         </div>
 
-        <div className="pt-8">
-          <Button size="lg" onClick={onLogin} className="text-lg px-8 h-12 rounded-full font-medium">
-            Get Started
+        <div className="max-w-sm mx-auto space-y-4">
+          <div className="space-y-2 text-left">
+            <label className="text-sm font-medium text-muted-foreground">Display name</label>
+            <Input
+              placeholder="Your name"
+              value={displayName}
+              onChange={(event) => onDisplayNameChange(event.target.value)}
+            />
+          </div>
+          <Button size="lg" onClick={onLogin} className="w-full text-lg h-12 rounded-full font-medium">
+            Continue
           </Button>
         </div>
       </div>
