@@ -1,8 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import { MessageSquare, Library, Settings, LogOut, Brain } from 'lucide-react'
-import { blink } from '../../lib/blink'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { useLocalUser } from '../../hooks/useLocalUser'
 
 const navItems = [
   { icon: MessageSquare, label: 'Chat', path: '/' },
@@ -11,6 +11,8 @@ const navItems = [
 ]
 
 export function Sidebar() {
+  const { logout } = useLocalUser()
+
   return (
     <aside className="w-64 border-r bg-card flex flex-col h-full">
       <div className="p-6">
@@ -46,7 +48,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground hover:text-destructive"
-          onClick={() => blink.auth.logout()}
+          onClick={logout}
         >
           <LogOut className="h-4 w-4" />
           Sign Out
