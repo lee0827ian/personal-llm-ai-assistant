@@ -13,6 +13,7 @@ export function LocalAuthGate({ children }: LocalAuthGateProps) {
   const { user, setUser } = useLocalUser()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   const isReady = useMemo(() => Boolean(user), [user])
 
@@ -21,7 +22,7 @@ export function LocalAuthGate({ children }: LocalAuthGateProps) {
   }
 
   const handleContinue = () => {
-    if (!name.trim()) return
+    if (!name.trim() || password !== '1234') return
     setUser({
       name: name.trim(),
       email: email.trim() || undefined,
@@ -74,8 +75,21 @@ export function LocalAuthGate({ children }: LocalAuthGateProps) {
                 placeholder="you@example.com"
               />
             </div>
+            <div className="space-y-2">
+              <label htmlFor="local-auth-password" className="text-sm font-medium">
+                Password
+              </label>
+              <Input
+                id="local-auth-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Enter password"
+              />
+              <p className="text-xs text-muted-foreground">Initial password: 1234</p>
+            </div>
           </div>
-          <Button className="w-full" onClick={handleContinue} disabled={!name.trim()}>
+          <Button className="w-full" onClick={handleContinue} disabled={!name.trim() || password !== '1234'}>
             Continue
           </Button>
           <p className="text-xs text-muted-foreground">

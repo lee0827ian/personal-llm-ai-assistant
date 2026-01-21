@@ -1,24 +1,35 @@
-import { pipeline, type Pipeline } from '@xenova/transformers'
+const VECTOR_SIZE = 128
 
-let embedder: Pipeline | null = null
+function hashToken(token: string): number {
+  let hash = 5381
+  for (let index = 0; index < token.length; index += 1) {
+    hash = (hash * 33) ^ token.charCodeAt(index)
+  }
+  return Math.abs(hash)
+}
 
-export async function initEmbedder() {
-  if (embedder) return embedder
-  embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
-    quantized: true,
-  })
-  return embedder
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .filter(Boolean)
 }
 
 export async function embed(text: string): Promise<number[]> {
-  const model = await initEmbedder()
-  const truncated = text.slice(0, 2000)
-  const output = await model(truncated, {
-    pooling: 'mean',
-    normalize: true,
-  })
+  const vector = new Array<number>(VECTOR_SIZE).fill(0)
+  const tokens = tokenize(text)
 
-  return Array.from(output.data as Float32Array)
+  for (const token of tokens) {
+    const index = hashToken(token) % VECTOR_SIZE
+    vector[index] += 1
+  }
+
+  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
+  if (magnitude > 0) {
+    return vector.map((value) => value / magnitude)
+  }
+
+  return vector
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
